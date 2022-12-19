@@ -38,7 +38,7 @@ contract Pool is Ownable {
     IERC20Mintable public WXDC;
     IERC20Mintable public WUSD;
     IERC20 public stablecoinAddress;
-    address public SIGNER = address(0x988346B4a0C46EfEfa781BFf6C2C7dCd4ca0792C);
+    address public SIGNER = address(0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266);
     uint16 internal BPS_BASE = 10000;
     uint16 internal MAX_UTILIZED_COLLATERAL = 7000;
 
@@ -94,12 +94,25 @@ contract Pool is Ownable {
 
         uint256 totalUnusedCollateral = valueOfCollateral - valueOfDebt;
 
-        uint16 bpsFraction = MAX_UTILIZED_COLLATERAL / BPS_BASE;
-        uint256 maxLoan = totalUnusedCollateral * bpsFraction;
+        uint256 maxLoan = (totalUnusedCollateral * MAX_UTILIZED_COLLATERAL)/BPS_BASE;
+        
 
-        if (maxLoan > _amount) revert NotEnoughCollateral();
+        console.log(valueOfCollateral);
+        console.log(valueOfDebt);
+         console.log(totalUnusedCollateral);
+          console.log(totalUnusedCollateral * MAX_UTILIZED_COLLATERAL);
+           console.log(maxLoan);
+            console.log(_amount);
+             console.log(_amount*multipliedBy);
+
+        
 
         if (_currency == currency.XDC) {
+            uint256 valueOfRequestedAmount = _amount * pricePerXDCInUsd;
+            console.log('TED');
+            console.log(valueOfRequestedAmount);
+            if (maxLoan < valueOfRequestedAmount) revert NotEnoughCollateral();
+
             if (address(this).balance < _amount)
                 revert NotEnoughSupplyToBorrow();
 
@@ -108,6 +121,7 @@ contract Pool is Ownable {
             (bool sent, ) = msg.sender.call{value: _amount}("");
             if (!sent) revert TransferFailed();
         } else {
+            if (maxLoan < _amount*multipliedBy) revert NotEnoughCollateral();
             if (stablecoinAddress.balanceOf(address(this)) < _amount)
                 revert NotEnoughSupplyToBorrow();
 
