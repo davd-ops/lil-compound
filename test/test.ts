@@ -24,11 +24,14 @@ let TestStablecoin: TestStablecoin;
 let SignatureContent: any;
 let hash: any;
 let signature: string;
+let expiration: number;
 
 const EIP712SignatureTypes = {
   SignatureContent: [
     { name: "nonce", type: "uint256" },
     { name: "price", type: "uint256" },
+    { name: "multipliedBy", type: "uint256" },
+    { name: "timestamp", type: "uint40" },
   ],
 };
 
@@ -44,6 +47,8 @@ function getSignatureContentObject(signatureContent: any) {
   return {
     nonce: signatureContent.nonce,
     price: signatureContent.price,
+    multipliedBy: signatureContent.multipliedBy,
+    timestamp: signatureContent.timestamp
   };
 }
 
@@ -67,8 +72,17 @@ async function signSignature(
   );
 }
 
+async function timestampFromNow(delta: number) {
+  const lastBlockNumber = await ethers.provider.getBlockNumber();
+  const lastBlock = await ethers.provider.getBlock(lastBlockNumber); 
+  
+  return lastBlock.timestamp + delta;
+}
+
 describe("Initialization of core functions", function () {
   beforeEach(async function () {
+    expiration =  await timestampFromNow(100);
+    
     [user, contractOwner] = await ethers.getSigners();
 
     WXDC = (await deployContract(contractOwner, WXDCArtifact)) as WXDC;
@@ -145,16 +159,17 @@ describe("Initialization of core functions", function () {
         expect(await TestStablecoin.balanceOf(Pool.address)).to.be.equal("100");
       });
       describe("Signatures", function () {
-        beforeEach(async function () {
+        beforeEach(async function () {         
           SignatureContent = {
             nonce: 420,
-            price: 1000,
+            price: 237887, //237887 = 0.237887
+            multipliedBy: 1000000,
+            timestamp: expiration,
           };
         });
         describe("Signature test", function () {
           beforeEach(async function () {
             hash = getSignatureHashBytes(SignatureContent, Pool.address);
-            
             signature = await signSignature(SignatureContent, Pool.address, user);            
           });
           describe("Revoke Signature", function () {
@@ -182,7 +197,6 @@ describe("Initialization of core functions", function () {
               expect(isRevoked).to.equal(true);
             });
           });
-
           describe("Creating signatures", function () {
             it("should fail when given invalid signature", async function () {
               const fakeSignature =
@@ -201,23 +215,31 @@ describe("Initialization of core functions", function () {
 
               await expect(
                 Pool.connect(contractOwner).validateSignature(
-                  hash
+                  expiration, hash
                 )
               ).to.be.revertedWith("InvalidSignature()");
             });
 
-            it("should get price and nonce", async function () {
-              console.log(await Pool.connect(contractOwner).getPriceAndNonce(
-                SignatureContent,
-                signature
-              ));
-              
+            it("should get price and nonce", async function () {             
               await expect(
-                Pool.connect(contractOwner).getPriceAndNonce(
+                Pool.connect(contractOwner).signatureCheck(
                   SignatureContent,
                   signature
                 )
               ).to.be.fulfilled;
+            });
+            it("should TEST", async function () {
+              await expect(WUSD.mint(contractOwner.address, 100)).to.be
+          .fulfilled;
+          await expect(WXDC.mint(contractOwner.address, 150)).to.be
+          .fulfilled;
+        // await expect(TestStablecoin.approve(Pool.address, 100000000000)).to.be
+        //   .fulfilled;
+
+        // await expect(Pool.depositCollateralUSD(100)).to.be.fulfilled;
+        expect(await WUSD.balanceOf(contractOwner.address)).to.be.equal("100");
+        expect(await WXDC.balanceOf(contractOwner.address)).to.be.equal("150");
+              await Pool.test();
             });
 
             // it("should revoke accepted bid", async function () {

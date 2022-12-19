@@ -15,6 +15,9 @@ contract Pool is Ownable {
     error TransferFailed();
     error InvalidSignature();
     error NoPermissionToExecute();
+    error NotEnoughCollateral();
+    error NotEnoughSupplyToBorrow();
+    error ExpiredPrice();
 
     // ========================================
     //     VARIABLE DEFINITIONS
@@ -28,6 +31,8 @@ contract Pool is Ownable {
     struct SignatureContent {
         uint256 nonce;
         uint256 price;
+        uint256 multipliedBy;
+        uint40 timestamp;
     }
 
     IERC20Mintable public WXDC;
@@ -38,10 +43,14 @@ contract Pool is Ownable {
     uint16 internal MAX_UTILIZED_COLLATERAL = 7000;
 
     bytes32 internal constant SIG_TYPEHASH =
-        keccak256("SignatureContent(uint256 nonce,uint256 price)");
+        keccak256(
+            "SignatureContent(uint256 nonce,uint256 price,uint256 multipliedBy,uint40 timestamp)"
+        );
 
-    mapping(address => uint256) XDCDebt;
-    mapping(address => uint256) USDDebt;
+    mapping(address => uint256) xdcCollateral;
+    mapping(address => uint256) usdCollateral;
+    mapping(address => uint256) xdcDebt;
+    mapping(address => uint256) usdDebt;
     mapping(bytes32 => bool) public revokedSignatures;
 
     // ========================================
@@ -64,14 +73,55 @@ contract Pool is Ownable {
         WXDC.burn(msg.sender, _amount);
     }
 
-    function borrowXDC(uint256 _amount, currency _currency) external {
+    function borrowXDC(
+        uint256 _amount,
+        currency _currency,
+        SignatureContent calldata _content,
+        bytes calldata _signature
+    ) external {
         // check his collateral level
-        // uint16 bpsFraction = MAX_UTILIZED_COLLATERAL / BPS_BASE;
-        // uint256 maxLoan = total * bpsFraction;;
-        // if (currency)
+        //check balanceof, not mappings
 
-        (bool sent, ) = msg.sender.call{value: _amount}("");
-        if (!sent) revert TransferFailed();
+        // if (currency)
+        //check valid
+        signatureCheck(_content, _signature);
+
+        uint256 pricePerXDCInUsd = _content.price;
+        uint256 multipliedBy = _content.multipliedBy;
+
+        uint256 valueOfCollateral = usdCollateral[msg.sender] *
+            multipliedBy +
+            xdcCollateral[msg.sender] *
+            pricePerXDCInUsd;
+
+        uint256 valueOfDebt = usdDebt[msg.sender] *
+            multipliedBy +
+            xdcDebt[msg.sender] *
+            pricePerXDCInUsd;
+
+        uint256 totalUnusedCollateral = valueOfCollateral - valueOfDebt;
+
+        uint16 bpsFraction = MAX_UTILIZED_COLLATERAL / BPS_BASE;
+        uint256 maxLoan = totalUnusedCollateral * bpsFraction;
+
+        if (maxLoan > _amount) revert NotEnoughCollateral();
+
+        if (_currency == currency.XDC) {
+            if (address(this).balance < _amount)
+                revert NotEnoughSupplyToBorrow();
+
+            xdcDebt[msg.sender] = xdcDebt[msg.sender] + _amount;
+
+            (bool sent, ) = msg.sender.call{value: _amount}("");
+            if (!sent) revert TransferFailed();
+        } else {
+            if (stablecoinAddress.balanceOf(address(this)) < _amount)
+                revert NotEnoughSupplyToBorrow();
+
+            usdDebt[msg.sender] = usdDebt[msg.sender] + _amount;
+
+            stablecoinAddress.transfer(msg.sender, _amount);
+        }
     }
 
     function depositCollateralUSD(uint256 _amount) external {
@@ -87,16 +137,24 @@ contract Pool is Ownable {
 
     function liquidate() external {}
 
-    function getPriceAndNonce(
+    function signatureCheck(
         SignatureContent calldata _content,
         bytes calldata _signature
-    ) external {
+    ) public view {
         bytes32 structHash = keccak256(
-            abi.encodePacked("\x19\x01", _eip712DomainSeparator(), hash(_content))
+            abi.encodePacked(
+                "\x19\x01",
+                _eip712DomainSeparator(),
+                hash(_content)
+            )
         );
-        validateSignature(structHash);
+        validateSignature(_content.timestamp, structHash);
         verifySignature(structHash, _signature);
-        
+    }
+
+    function test() external view {
+        console.log(WXDC.balanceOf(msg.sender));
+        console.log(WUSD.balanceOf(msg.sender));
     }
 
     // ========================================
@@ -121,7 +179,10 @@ contract Pool is Ownable {
     //     SIGNATURE FUNCTIONS
     // ========================================
 
-    function revokeSignature(bytes32 _hash, bytes calldata _signature) external {
+    function revokeSignature(
+        bytes32 _hash,
+        bytes calldata _signature
+    ) external {
         if (revokedSignatures[_hash] == true) revert InvalidSignature();
         if (ECDSA.recover(_hash, _signature) != SIGNER)
             revert NoPermissionToExecute();
@@ -133,12 +194,13 @@ contract Pool is Ownable {
         bytes32 _hash,
         bytes calldata _signature
     ) public view {
-        console.log(ECDSA.recover(_hash, _signature));
         if (ECDSA.recover(_hash, _signature) != SIGNER)
             revert InvalidSignature();
     }
 
-    function validateSignature(bytes32 _hash) public view {
+    function validateSignature(uint40 _expiration, bytes32 _hash) public view {
+        if (block.timestamp >= _expiration)
+            revert ExpiredPrice();
         if (revokedSignatures[_hash] != false) revert InvalidSignature();
     }
 
@@ -146,7 +208,15 @@ contract Pool is Ownable {
         SignatureContent memory _struct
     ) private pure returns (bytes32) {
         return
-            keccak256(abi.encode(SIG_TYPEHASH, _struct.nonce, _struct.price));
+            keccak256(
+                abi.encode(
+                    SIG_TYPEHASH,
+                    _struct.nonce,
+                    _struct.price,
+                    _struct.multipliedBy,
+                    _struct.timestamp
+                )
+            );
     }
 
     /**
@@ -173,10 +243,10 @@ contract Pool is Ownable {
     // ========================================
 
     function getDebtXDC(address _address) external view returns (uint256) {
-        return XDCDebt[_address];
+        return xdcDebt[_address];
     }
 
     function getDebtUSD(address _address) external view returns (uint256) {
-        return USDDebt[_address];
+        return usdDebt[_address];
     }
 }
