@@ -90,6 +90,15 @@ contract Pool is Ownable {
 
         WXDC.burn(msg.sender, _amount);
 
+        bytes32 structHash = keccak256(
+            abi.encodePacked(
+                "\x19\x01",
+                _eip712DomainSeparator(),
+                hash(_content)
+            )
+        );
+        revokeSignature(structHash);
+
         (bool sent, ) = msg.sender.call{value: _amount}("");
         if (!sent) revert TransferFailed();
     }
@@ -166,11 +175,29 @@ contract Pool is Ownable {
             WUSD.burn(msg.sender, _amount);
 
             stablecoinAddress.transfer(msg.sender, _amount);
+
+            bytes32 structHash = keccak256(
+            abi.encodePacked(
+                "\x19\x01",
+                _eip712DomainSeparator(),
+                hash(_content)
+            )
+        );
+        revokeSignature(structHash);
     }
 
-    function liquidate(address _address) internal {
+    function liquidate(address _address, SignatureContent calldata _content) internal {
         WUSD.burn(_address, getCollateralUSD(_address));
         WUSD.burn(_address, getCollateralXDC(_address));
+
+        bytes32 structHash = keccak256(
+            abi.encodePacked(
+                "\x19\x01",
+                _eip712DomainSeparator(),
+                hash(_content)
+            )
+        );
+        revokeSignature(structHash);
     }
 
     function signatureCheck(
@@ -338,7 +365,7 @@ contract Pool is Ownable {
         uint256 debtAndCollateralization = (valueOfDebt * BPS_BASE) /
             MAX_UTILIZED_COLLATERAL;
 
-        if (debtAndCollateralization > valueOfCollateral) liquidate(_address);
+        if (debtAndCollateralization > valueOfCollateral) liquidate(_address, _content);
 
         uint256 totalUnusedCollateral = valueOfCollateral -
             debtAndCollateralization;
