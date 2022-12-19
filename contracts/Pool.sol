@@ -38,7 +38,7 @@ contract Pool is Ownable {
     IERC20Mintable public WXDC;
     IERC20Mintable public WUSD;
     IERC20 public stablecoinAddress;
-    address public SIGNER = address(0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266);
+    address public SIGNER = address(0x988346B4a0C46EfEfa781BFf6C2C7dCd4ca0792C);
     uint16 internal BPS_BASE = 10000;
     uint16 internal MAX_UTILIZED_COLLATERAL = 7000;
 
@@ -47,8 +47,6 @@ contract Pool is Ownable {
             "SignatureContent(uint256 nonce,uint256 price,uint256 multipliedBy,uint40 timestamp)"
         );
 
-    mapping(address => uint256) xdcCollateral;
-    mapping(address => uint256) usdCollateral;
     mapping(address => uint256) xdcDebt;
     mapping(address => uint256) usdDebt;
     mapping(bytes32 => bool) public revokedSignatures;
@@ -73,30 +71,25 @@ contract Pool is Ownable {
         WXDC.burn(msg.sender, _amount);
     }
 
-    function borrowXDC(
+    function borrow(
         uint256 _amount,
         currency _currency,
         SignatureContent calldata _content,
         bytes calldata _signature
     ) external {
-        // check his collateral level
-        //check balanceof, not mappings
-
-        // if (currency)
-        //check valid
         signatureCheck(_content, _signature);
 
         uint256 pricePerXDCInUsd = _content.price;
         uint256 multipliedBy = _content.multipliedBy;
 
-        uint256 valueOfCollateral = usdCollateral[msg.sender] *
+        uint256 valueOfCollateral = getCollateralUSD(msg.sender) *
             multipliedBy +
-            xdcCollateral[msg.sender] *
+            getCollateralXDC(msg.sender) *
             pricePerXDCInUsd;
 
-        uint256 valueOfDebt = usdDebt[msg.sender] *
+        uint256 valueOfDebt = getDebtUSD(msg.sender) *
             multipliedBy +
-            xdcDebt[msg.sender] *
+            getDebtXDC(msg.sender) *
             pricePerXDCInUsd;
 
         uint256 totalUnusedCollateral = valueOfCollateral - valueOfDebt;
@@ -110,7 +103,7 @@ contract Pool is Ownable {
             if (address(this).balance < _amount)
                 revert NotEnoughSupplyToBorrow();
 
-            xdcDebt[msg.sender] = xdcDebt[msg.sender] + _amount;
+            xdcDebt[msg.sender] = getDebtXDC(msg.sender) + _amount;
 
             (bool sent, ) = msg.sender.call{value: _amount}("");
             if (!sent) revert TransferFailed();
@@ -118,10 +111,19 @@ contract Pool is Ownable {
             if (stablecoinAddress.balanceOf(address(this)) < _amount)
                 revert NotEnoughSupplyToBorrow();
 
-            usdDebt[msg.sender] = usdDebt[msg.sender] + _amount;
+            usdDebt[msg.sender] = getDebtUSD(msg.sender) + _amount;
 
             stablecoinAddress.transfer(msg.sender, _amount);
         }
+
+        bytes32 structHash = keccak256(
+            abi.encodePacked(
+                "\x19\x01",
+                _eip712DomainSeparator(),
+                hash(_content)
+            )
+        );
+        revokeSignature(structHash);
     }
 
     function depositCollateralUSD(uint256 _amount) external {
@@ -179,13 +181,8 @@ contract Pool is Ownable {
     //     SIGNATURE FUNCTIONS
     // ========================================
 
-    function revokeSignature(
-        bytes32 _hash,
-        bytes calldata _signature
-    ) external {
+    function revokeSignature(bytes32 _hash) internal {
         if (revokedSignatures[_hash] == true) revert InvalidSignature();
-        if (ECDSA.recover(_hash, _signature) != SIGNER)
-            revert NoPermissionToExecute();
 
         revokedSignatures[_hash] = true;
     }
@@ -199,8 +196,7 @@ contract Pool is Ownable {
     }
 
     function validateSignature(uint40 _expiration, bytes32 _hash) public view {
-        if (block.timestamp >= _expiration)
-            revert ExpiredPrice();
+        if (block.timestamp >= _expiration) revert ExpiredPrice();
         if (revokedSignatures[_hash] != false) revert InvalidSignature();
     }
 
@@ -242,11 +238,55 @@ contract Pool is Ownable {
     //     OTHER FUNCTIONS
     // ========================================
 
-    function getDebtXDC(address _address) external view returns (uint256) {
+    function getDebtXDC(address _address) public view returns (uint256) {
         return xdcDebt[_address];
     }
 
-    function getDebtUSD(address _address) external view returns (uint256) {
+    function getDebtUSD(address _address) public view returns (uint256) {
         return usdDebt[_address];
+    }
+
+    function getCollateralXDC(address _address) public view returns (uint256) {
+        return WXDC.balanceOf(_address);
+    }
+
+    function getCollateralUSD(address _address) public view returns (uint256) {
+        return WUSD.balanceOf(_address);
+    }
+
+    function getTotalCollateral(
+        address _address,
+        SignatureContent calldata _content,
+        bytes calldata _signature
+    ) external view returns (uint256) {
+        signatureCheck(_content, _signature);
+
+        uint256 pricePerXDCInUsd = _content.price;
+        uint256 multipliedBy = _content.multipliedBy;
+
+        uint256 valueOfCollateral = getCollateralUSD(_address) *
+            multipliedBy +
+            getCollateralXDC(_address) *
+            pricePerXDCInUsd;
+
+        return valueOfCollateral;
+    }
+
+    function getTotalDebt(
+        address _address,
+        SignatureContent calldata _content,
+        bytes calldata _signature
+    ) external view returns (uint256) {
+        signatureCheck(_content, _signature);
+
+        uint256 pricePerXDCInUsd = _content.price;
+        uint256 multipliedBy = _content.multipliedBy;
+
+        uint256 valueOfDebt = getDebtUSD(_address) *
+            multipliedBy +
+            getDebtXDC(_address) *
+            pricePerXDCInUsd;
+
+        return valueOfDebt;
     }
 }
