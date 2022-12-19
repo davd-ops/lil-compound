@@ -38,11 +38,11 @@ contract Pool is Ownable {
     uint16 internal MAX_UTILIZED_COLLATERAL = 7000;
 
     bytes32 internal constant SIG_TYPEHASH =
-        keccak256("Signaturecontent(uint256 nonce,uint256 price)");
+        keccak256("SignatureContent(uint256 nonce,uint256 price)");
 
     mapping(address => uint256) XDCDebt;
     mapping(address => uint256) USDDebt;
-    mapping(bytes32 => bool) public revokedBids;
+    mapping(bytes32 => bool) public revokedSignatures;
 
     // ========================================
     //    CONSTRUCTOR AND CORE FUNCTIONS
@@ -87,6 +87,18 @@ contract Pool is Ownable {
 
     function liquidate() external {}
 
+    function getPriceAndNonce(
+        SignatureContent calldata _content,
+        bytes calldata _signature
+    ) external {
+        bytes32 structHash = keccak256(
+            abi.encodePacked("\x19\x01", _eip712DomainSeparator(), hash(_content))
+        );
+        validateSignature(structHash);
+        verifySignature(structHash, _signature);
+        
+    }
+
     // ========================================
     //     ADMIN FUNCTIONS
     // ========================================
@@ -109,24 +121,25 @@ contract Pool is Ownable {
     //     SIGNATURE FUNCTIONS
     // ========================================
 
-    function revokeBid(bytes32 _hash, bytes calldata _signature) external {
-        if (revokedBids[_hash] == true) revert InvalidSignature();
+    function revokeSignature(bytes32 _hash, bytes calldata _signature) external {
+        if (revokedSignatures[_hash] == true) revert InvalidSignature();
         if (ECDSA.recover(_hash, _signature) != SIGNER)
             revert NoPermissionToExecute();
 
-        revokedBids[_hash] = true;
+        revokedSignatures[_hash] = true;
     }
 
     function verifySignature(
         bytes32 _hash,
         bytes calldata _signature
     ) public view {
+        console.log(ECDSA.recover(_hash, _signature));
         if (ECDSA.recover(_hash, _signature) != SIGNER)
             revert InvalidSignature();
     }
 
-    function validateBid(bytes32 _hash) public view {
-        if (revokedBids[_hash] != false) revert InvalidSignature();
+    function validateSignature(bytes32 _hash) public view {
+        if (revokedSignatures[_hash] != false) revert InvalidSignature();
     }
 
     function hash(
@@ -146,11 +159,10 @@ contract Pool is Ownable {
             keccak256(
                 abi.encode(
                     keccak256(
-                        "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+                        "EIP712Domain(string name,string version,address verifyingContract)"
                     ),
                     keccak256(bytes("LilCompound")),
                     keccak256(bytes("1.0")),
-                    block.chainid,
                     address(this)
                 )
             );

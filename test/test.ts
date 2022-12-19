@@ -36,7 +36,6 @@ function getEIP712Domain(address: string) {
   return {
     name: "LilCompound",
     version: "1.0",
-    chainId: 31337, // Default hardhat network chain id
     verifyingContract: address,
   };
 }
@@ -48,7 +47,7 @@ function getSignatureContentObject(signatureContent: any) {
   };
 }
 
-function getBidHashBytes(signatureContent: any, contractAddress: string) {  
+function getSignatureHashBytes(signatureContent: any, contractAddress: string) {  
   return ethers.utils._TypedDataEncoder.hash(
     getEIP712Domain(contractAddress),
     EIP712SignatureTypes,
@@ -56,7 +55,7 @@ function getBidHashBytes(signatureContent: any, contractAddress: string) {
   );
 }
 
-async function signBid(
+async function signSignature(
   signatureContent: any,
   contractAddress: string,
   signer: SignerWithAddress
@@ -154,37 +153,37 @@ describe("Initialization of core functions", function () {
         });
         describe("Signature test", function () {
           beforeEach(async function () {
-            hash = getBidHashBytes(SignatureContent, Pool.address);
+            hash = getSignatureHashBytes(SignatureContent, Pool.address);
             
-            signature = await signBid(SignatureContent, Pool.address, user);            
+            signature = await signSignature(SignatureContent, Pool.address, user);            
           });
-          describe("Revoke bid", function () {
+          describe("Revoke Signature", function () {
             it("should fail with invalid signature", async function () {
               const fakeSignature =
                 "0x6732801029378ddf837210000397c68129387fd887839708320980942102910a6732801029378ddf837210000397c68129387fd887839708320980942102910a00";
 
               await expect(
-                Pool.connect(user).revokeBid(hash, fakeSignature)
+                Pool.connect(user).revokeSignature(hash, fakeSignature)
               ).to.be.revertedWith("ECDSA: invalid signature");
             });
 
-            it("should fail if bid is already revoked", async function () {          
-              await Pool.connect(user).revokeBid(hash, signature);
+            it("should fail if signature is already revoked", async function () {          
+              await Pool.connect(user).revokeSignature(hash, signature);
 
               await expect(
-                Pool.connect(user).revokeBid(hash, signature)
+                Pool.connect(user).revokeSignature(hash, signature)
               ).to.be.revertedWith("InvalidSignature()");
             });
 
-            it("should set bid as revoked", async function () {
-              await Pool.connect(user).revokeBid(hash, signature);
+            it("should set signature as revoked", async function () {
+              await Pool.connect(user).revokeSignature(hash, signature);
 
-              const isRevoked = await Pool.revokedBids(hash);
+              const isRevoked = await Pool.revokedSignatures(hash);
               expect(isRevoked).to.equal(true);
             });
           });
 
-          describe("Creating bids", function () {
+          describe("Creating signatures", function () {
             it("should fail when given invalid signature", async function () {
               const fakeSignature =
                 "0x6732801029378ddf837210000397c68129387fd887839708320980942102910a6732801029378ddf837210000397c68129387fd887839708320980942102910a00";
@@ -197,14 +196,28 @@ describe("Initialization of core functions", function () {
               ).to.be.revertedWith("ECDSA: invalid signature");
             });
 
-            it("should fail when bid is revoked", async function () {
-              await Pool.connect(user).revokeBid(hash, signature);
+            it("should fail when signature is revoked", async function () {
+              await Pool.connect(user).revokeSignature(hash, signature);
 
               await expect(
-                Pool.connect(contractOwner).validateBid(
+                Pool.connect(contractOwner).validateSignature(
                   hash
                 )
               ).to.be.revertedWith("InvalidSignature()");
+            });
+
+            it("should get price and nonce", async function () {
+              console.log(await Pool.connect(contractOwner).getPriceAndNonce(
+                SignatureContent,
+                signature
+              ));
+              
+              await expect(
+                Pool.connect(contractOwner).getPriceAndNonce(
+                  SignatureContent,
+                  signature
+                )
+              ).to.be.fulfilled;
             });
 
             // it("should revoke accepted bid", async function () {
