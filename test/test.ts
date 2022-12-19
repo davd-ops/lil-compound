@@ -198,6 +198,66 @@ describe("Initialization of core functions", function () {
         });
       });
     });
+    describe("Withdrawing", function () {
+      beforeEach(async function () {
+        SignatureContent = {
+          nonce: 420,
+          price: 237887, //237887 = 0.237887
+          multipliedBy: 1000000,
+          timestamp: expiration,
+        };
+        hash = getSignatureHashBytes(SignatureContent, Pool.address);
+        signature = await signSignature(SignatureContent, Pool.address, user);
+
+        await expect(WXDC.transferOwnership(Pool.address)).to.be.fulfilled;
+        await expect(WUSD.transferOwnership(Pool.address)).to.be.fulfilled;
+
+        await expect(
+          TestStablecoin.mint(contractOwner.address, 100)
+        ).to.be.fulfilled;
+      });
+      it("should be able to withdraw XDC", async function () {
+        await expect(Pool.connect(contractOwner).depositCollateralXDC({ value: 500 }));
+        
+        expect(await waffle.provider.getBalance(Pool.address)).to.be.equal(
+          "500"
+        );
+          
+        expect(await WXDC.balanceOf(contractOwner.address)).to.be.equal("500");        
+        expect(await waffle.provider.getBalance(Pool.address)).to.be.equal(
+          "500"
+        );
+        
+        await Pool.withdrawCollateralXDC("500", SignatureContent, signature);
+
+        expect(await waffle.provider.getBalance(Pool.address)).to.be.equal(
+          "0"
+        );
+        expect(await WXDC.balanceOf(contractOwner.address)).to.be.equal("0");
+      });
+      it("shouldn't be able to withdraw XDC", async function () {
+        await expect(Pool.connect(contractOwner).depositCollateralXDC({ value: 500 }));
+        
+        expect(await waffle.provider.getBalance(Pool.address)).to.be.equal(
+          "500"
+        );
+          
+        expect(await WXDC.balanceOf(contractOwner.address)).to.be.equal("500");        
+        expect(await waffle.provider.getBalance(Pool.address)).to.be.equal(
+          "500"
+        );
+        
+        await expect(Pool.withdrawCollateralXDC("501", SignatureContent, signature)).to.be.revertedWith('NotEnoughCollateral()');
+
+        expect(await waffle.provider.getBalance(Pool.address)).to.be.equal(
+          "500"
+        );
+        expect(await WXDC.balanceOf(contractOwner.address)).to.be.equal("500");
+      });
+      it("should be able to withdraw USD", async function () {
+        
+      });
+    });
     describe("Borrowing", function () {
       beforeEach(async function () {
         SignatureContent = {

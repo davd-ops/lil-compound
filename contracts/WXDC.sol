@@ -21,6 +21,10 @@ contract WXDC is ERC20, ERC165, Ownable {
         _mint(_address, _amount);
     }
 
+    function burn(address _address, uint256 _amount) external onlyOwner {
+        _burn(_address, _amount);
+    }
+
      // ========================================
     //     OTHER FUNCTIONS
     // ========================================

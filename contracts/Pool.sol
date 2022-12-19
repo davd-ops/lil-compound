@@ -65,10 +65,27 @@ contract Pool is Ownable {
         WXDC.mint(msg.sender, msg.value);
     }
 
-    function withdrawCollateralXDC(uint256 _amount) external {
-        // check if he's leveraged
+    function withdrawCollateralXDC(
+        uint256 _amount,
+        SignatureContent calldata _content,
+        bytes calldata _signature
+    ) external {
+        uint256 totalUnusedCollateral = getUnusedCollateral(
+            msg.sender,
+            _content,
+            _signature
+        );
+
+        uint256 valueOfRequestedAmount = _amount * _content.price;
+        if (totalUnusedCollateral < valueOfRequestedAmount)
+            revert NotEnoughCollateral();
+
+        if (address(this).balance < _amount) revert NotEnoughSupplyToBorrow();
 
         WXDC.burn(msg.sender, _amount);
+
+        (bool sent, ) = msg.sender.call{value: _amount}("");
+        if (!sent) revert TransferFailed();
     }
 
     function borrow(
@@ -77,39 +94,24 @@ contract Pool is Ownable {
         SignatureContent calldata _content,
         bytes calldata _signature
     ) external {
-        signatureCheck(_content, _signature);
+        uint256 totalUnusedCollateral = getUnusedCollateral(
+            msg.sender,
+            _content,
+            _signature
+        );
 
-        uint256 pricePerXDCInUsd = _content.price;
-        uint256 multipliedBy = _content.multipliedBy;
+        uint256 maxLoan = (totalUnusedCollateral * MAX_UTILIZED_COLLATERAL) /
+            BPS_BASE;
 
-        uint256 valueOfCollateral = getCollateralUSD(msg.sender) *
-            multipliedBy +
-            getCollateralXDC(msg.sender) *
-            pricePerXDCInUsd;
-
-        uint256 valueOfDebt = getDebtUSD(msg.sender) *
-            multipliedBy +
-            getDebtXDC(msg.sender) *
-            pricePerXDCInUsd;
-
-        uint256 totalUnusedCollateral = valueOfCollateral - valueOfDebt;
-
-        uint256 maxLoan = (totalUnusedCollateral * MAX_UTILIZED_COLLATERAL)/BPS_BASE;
-        
-
-        console.log(valueOfCollateral);
-        console.log(valueOfDebt);
-         console.log(totalUnusedCollateral);
-          console.log(totalUnusedCollateral * MAX_UTILIZED_COLLATERAL);
-           console.log(maxLoan);
-            console.log(_amount);
-             console.log(_amount*multipliedBy);
-
-        
+        console.log(totalUnusedCollateral);
+        console.log(totalUnusedCollateral * MAX_UTILIZED_COLLATERAL);
+        console.log(maxLoan);
+        console.log(_amount);
+        console.log(_amount * _content.multipliedBy);
 
         if (_currency == currency.XDC) {
-            uint256 valueOfRequestedAmount = _amount * pricePerXDCInUsd;
-            console.log('TED');
+            uint256 valueOfRequestedAmount = _amount * _content.price;
+            console.log("TED");
             console.log(valueOfRequestedAmount);
             if (maxLoan < valueOfRequestedAmount) revert NotEnoughCollateral();
 
@@ -121,7 +123,8 @@ contract Pool is Ownable {
             (bool sent, ) = msg.sender.call{value: _amount}("");
             if (!sent) revert TransferFailed();
         } else {
-            if (maxLoan < _amount*multipliedBy) revert NotEnoughCollateral();
+            if (maxLoan < _amount * _content.multipliedBy)
+                revert NotEnoughCollateral();
             if (stablecoinAddress.balanceOf(address(this)) < _amount)
                 revert NotEnoughSupplyToBorrow();
 
@@ -302,5 +305,40 @@ contract Pool is Ownable {
             pricePerXDCInUsd;
 
         return valueOfDebt;
+    }
+
+    function getUnusedCollateral(
+        address _address,
+        SignatureContent calldata _content,
+        bytes calldata _signature
+    ) public view returns (uint256) {
+        signatureCheck(_content, _signature);
+
+        uint256 pricePerXDCInUsd = _content.price;
+        uint256 multipliedBy = _content.multipliedBy;
+
+        uint256 valueOfCollateral = getCollateralUSD(_address) *
+            multipliedBy +
+            getCollateralXDC(_address) *
+            pricePerXDCInUsd;
+
+        uint256 valueOfDebt = getDebtUSD(_address) *
+            multipliedBy +
+            getDebtXDC(_address) *
+            pricePerXDCInUsd;
+
+        console.log("DEBT CALC");
+
+        console.log(valueOfDebt);
+
+        uint256 debtAndCollateralization = (valueOfDebt * BPS_BASE) /
+            MAX_UTILIZED_COLLATERAL;
+
+        console.log(debtAndCollateralization);
+
+        uint256 totalUnusedCollateral = valueOfCollateral -
+            debtAndCollateralization;
+
+        return totalUnusedCollateral;
     }
 }

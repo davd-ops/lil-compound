@@ -23,6 +23,13 @@ async function main() {
     await Pool.deployed();  
     console.log("Pool address:", Pool.address);
 
+    await (await WXDC.transferOwnership(Pool.address)).wait();
+    console.log("WXDC ownership transferred");
+    await (await WUSD.transferOwnership(Pool.address)).wait();
+    console.log("WUSD ownership transferred");
+
+    await (await TestStablecoin.mint('0x83467a8dfe402A79ca5DA970b02Cecfe11D92c7b', 1000)).wait();
+    console.log("TestStablecoin minted to admin wallet");
   
 }
 
