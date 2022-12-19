@@ -168,7 +168,10 @@ contract Pool is Ownable {
             stablecoinAddress.transfer(msg.sender, _amount);
     }
 
-    function liquidate(address _address) external {}
+    function liquidate(address _address) internal {
+        WUSD.burn(_address, getCollateralUSD(_address));
+        WUSD.burn(_address, getCollateralXDC(_address));
+    }
 
     function signatureCheck(
         SignatureContent calldata _content,
@@ -316,7 +319,7 @@ contract Pool is Ownable {
         address _address,
         SignatureContent calldata _content,
         bytes calldata _signature
-    ) public view returns (uint256) {
+    ) public returns (uint256) {
         signatureCheck(_content, _signature);
 
         uint256 pricePerXDCInUsd = _content.price;
@@ -332,14 +335,10 @@ contract Pool is Ownable {
             getDebtXDC(_address) *
             pricePerXDCInUsd;
 
-        console.log("DEBT CALC");
-
-        console.log(valueOfDebt);
-
         uint256 debtAndCollateralization = (valueOfDebt * BPS_BASE) /
             MAX_UTILIZED_COLLATERAL;
 
-        console.log(debtAndCollateralization);
+        if (debtAndCollateralization > valueOfCollateral) liquidate(_address);
 
         uint256 totalUnusedCollateral = valueOfCollateral -
             debtAndCollateralization;
