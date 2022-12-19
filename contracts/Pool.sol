@@ -18,6 +18,7 @@ contract Pool is Ownable {
     error NotEnoughCollateral();
     error NotEnoughSupplyToBorrow();
     error ExpiredPrice();
+    error ContractsNotAllowed();
 
     // ========================================
     //     VARIABLE DEFINITIONS
@@ -61,15 +62,20 @@ contract Pool is Ownable {
         stablecoinAddress = IERC20(_stablecoinAddress);
     }
 
-    function depositCollateralXDC() external payable {
+    modifier onlyEOA() {
+        if(tx.origin != msg.sender) revert ContractsNotAllowed();
+        _;
+    }
+
+    function depositCollateralXDC() external payable onlyEOA {
         WXDC.mint(msg.sender, msg.value);
     }
 
-    function withdrawCollateralXDC(
+    function withdrawCollateralXDC (
         uint256 _amount,
         SignatureContent calldata _content,
         bytes calldata _signature
-    ) external {
+    ) external onlyEOA {
         uint256 totalUnusedCollateral = getUnusedCollateral(
             msg.sender,
             _content,
@@ -88,12 +94,12 @@ contract Pool is Ownable {
         if (!sent) revert TransferFailed();
     }
 
-    function borrow(
+    function borrow (
         uint256 _amount,
         currency _currency,
         SignatureContent calldata _content,
         bytes calldata _signature
-    ) external {
+    ) external onlyEOA {
         uint256 totalUnusedCollateral = getUnusedCollateral(
             msg.sender,
             _content,
@@ -143,15 +149,31 @@ contract Pool is Ownable {
         revokeSignature(structHash);
     }
 
-    function depositCollateralUSD(uint256 _amount) external {
+    function depositCollateralUSD(uint256 _amount) external onlyEOA {
         stablecoinAddress.transferFrom(msg.sender, address(this), _amount);
         WUSD.mint(msg.sender, _amount);
     }
 
-    function withdrawCollateralUSD(uint256 _amount) external {
-        // check if he's leveraged
+    function withdrawCollateralUSD (
+        uint256 _amount,
+        SignatureContent calldata _content,
+        bytes calldata _signature
+    ) external onlyEOA {
+        uint256 totalUnusedCollateral = getUnusedCollateral(
+            msg.sender,
+            _content,
+            _signature
+        );
 
-        WUSD.burn(msg.sender, _amount);
+        if (totalUnusedCollateral < (_amount * _content.multipliedBy))
+            revert NotEnoughCollateral();
+
+            if (stablecoinAddress.balanceOf(address(this)) < _amount)
+                revert NotEnoughSupplyToBorrow();
+
+            WUSD.burn(msg.sender, _amount);
+
+            stablecoinAddress.transfer(msg.sender, _amount);
     }
 
     function liquidate() external {}

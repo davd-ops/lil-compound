@@ -213,41 +213,46 @@ describe("Initialization of core functions", function () {
         await expect(WUSD.transferOwnership(Pool.address)).to.be.fulfilled;
 
         await expect(
-          TestStablecoin.mint(contractOwner.address, 100)
+          TestStablecoin.mint(contractOwner.address, 500)
         ).to.be.fulfilled;
+        await expect(TestStablecoin.approve(Pool.address, 500)).to.be.fulfilled;
       });
       it("should be able to withdraw XDC", async function () {
-        await expect(Pool.connect(contractOwner).depositCollateralXDC({ value: 500 }));
-        
-        expect(await waffle.provider.getBalance(Pool.address)).to.be.equal(
-          "500"
-        );
-          
-        expect(await WXDC.balanceOf(contractOwner.address)).to.be.equal("500");        
-        expect(await waffle.provider.getBalance(Pool.address)).to.be.equal(
-          "500"
-        );
-        
-        await Pool.withdrawCollateralXDC("500", SignatureContent, signature);
+        await expect(
+          Pool.connect(contractOwner).depositCollateralXDC({ value: 500 })
+        ).to.be.fulfilled;
 
         expect(await waffle.provider.getBalance(Pool.address)).to.be.equal(
-          "0"
+          "500"
         );
+
+        expect(await WXDC.balanceOf(contractOwner.address)).to.be.equal("500");
+        expect(await waffle.provider.getBalance(Pool.address)).to.be.equal(
+          "500"
+        );
+
+        await Pool.withdrawCollateralXDC("500", SignatureContent, signature);
+
+        expect(await waffle.provider.getBalance(Pool.address)).to.be.equal("0");
         expect(await WXDC.balanceOf(contractOwner.address)).to.be.equal("0");
       });
       it("shouldn't be able to withdraw XDC", async function () {
-        await expect(Pool.connect(contractOwner).depositCollateralXDC({ value: 500 }));
-        
+        await expect(
+          Pool.connect(contractOwner).depositCollateralXDC({ value: 500 })
+        ).to.be.fulfilled;
+
         expect(await waffle.provider.getBalance(Pool.address)).to.be.equal(
           "500"
         );
-          
-        expect(await WXDC.balanceOf(contractOwner.address)).to.be.equal("500");        
+
+        expect(await WXDC.balanceOf(contractOwner.address)).to.be.equal("500");
         expect(await waffle.provider.getBalance(Pool.address)).to.be.equal(
           "500"
         );
-        
-        await expect(Pool.withdrawCollateralXDC("501", SignatureContent, signature)).to.be.revertedWith('NotEnoughCollateral()');
+
+        await expect(
+          Pool.withdrawCollateralXDC("501", SignatureContent, signature)
+        ).to.be.revertedWith("NotEnoughCollateral()");
 
         expect(await waffle.provider.getBalance(Pool.address)).to.be.equal(
           "500"
@@ -255,7 +260,40 @@ describe("Initialization of core functions", function () {
         expect(await WXDC.balanceOf(contractOwner.address)).to.be.equal("500");
       });
       it("should be able to withdraw USD", async function () {
-        
+        await expect(Pool.connect(contractOwner).depositCollateralUSD(500)).to
+          .be.fulfilled;
+
+        expect(await TestStablecoin.balanceOf(Pool.address)).to.be.equal("500");
+        expect(
+          await TestStablecoin.balanceOf(contractOwner.address)
+        ).to.be.equal("0");
+        expect(await WUSD.balanceOf(contractOwner.address)).to.be.equal("500");
+
+        await Pool.withdrawCollateralUSD("500", SignatureContent, signature);
+        expect(await TestStablecoin.balanceOf(Pool.address)).to.be.equal("0");
+        expect(
+          await TestStablecoin.balanceOf(contractOwner.address)
+        ).to.be.equal("500");
+        expect(await WUSD.balanceOf(contractOwner.address)).to.be.equal("0");
+      });
+      it("shouldn't be able to withdraw USD", async function () {
+        await expect(Pool.connect(contractOwner).depositCollateralUSD(500)).to
+          .be.fulfilled;
+
+        expect(await TestStablecoin.balanceOf(Pool.address)).to.be.equal("500");
+        expect(
+          await TestStablecoin.balanceOf(contractOwner.address)
+        ).to.be.equal("0");
+        expect(await WUSD.balanceOf(contractOwner.address)).to.be.equal("500");
+
+        await expect(
+          Pool.withdrawCollateralUSD("501", SignatureContent, signature)
+        ).to.be.revertedWith("NotEnoughCollateral()");
+        expect(await TestStablecoin.balanceOf(Pool.address)).to.be.equal("500");
+        expect(
+          await TestStablecoin.balanceOf(contractOwner.address)
+        ).to.be.equal("0");
+        expect(await WUSD.balanceOf(contractOwner.address)).to.be.equal("500");
       });
     });
     describe("Borrowing", function () {
@@ -306,7 +344,9 @@ describe("Initialization of core functions", function () {
         expect(await WUSD.balanceOf(contractOwner.address)).to.be.equal("100");
 
         expect(await TestStablecoin.balanceOf(Pool.address)).to.be.equal("100");
-        await expect(Pool.borrow(amount, 0, SignatureContent, signature)).to.be.revertedWith('NotEnoughCollateral()');
+        await expect(
+          Pool.borrow(amount, 0, SignatureContent, signature)
+        ).to.be.revertedWith("NotEnoughCollateral()");
       });
     });
   });
