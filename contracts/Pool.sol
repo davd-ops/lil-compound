@@ -109,16 +109,8 @@ contract Pool is Ownable {
         uint256 maxLoan = (totalUnusedCollateral * MAX_UTILIZED_COLLATERAL) /
             BPS_BASE;
 
-        console.log(totalUnusedCollateral);
-        console.log(totalUnusedCollateral * MAX_UTILIZED_COLLATERAL);
-        console.log(maxLoan);
-        console.log(_amount);
-        console.log(_amount * _content.multipliedBy);
-
         if (_currency == currency.XDC) {
             uint256 valueOfRequestedAmount = _amount * _content.price;
-            console.log("TED");
-            console.log(valueOfRequestedAmount);
             if (maxLoan < valueOfRequestedAmount) revert NotEnoughCollateral();
 
             if (address(this).balance < _amount)
@@ -129,7 +121,7 @@ contract Pool is Ownable {
             (bool sent, ) = msg.sender.call{value: _amount}("");
             if (!sent) revert TransferFailed();
         } else {
-            if (maxLoan < _amount * _content.multipliedBy)
+            if (maxLoan < (_amount * _content.multipliedBy))
                 revert NotEnoughCollateral();
             if (stablecoinAddress.balanceOf(address(this)) < _amount)
                 revert NotEnoughSupplyToBorrow();
@@ -176,7 +168,7 @@ contract Pool is Ownable {
             stablecoinAddress.transfer(msg.sender, _amount);
     }
 
-    function liquidate() external {}
+    function liquidate(address _address) external {}
 
     function signatureCheck(
         SignatureContent calldata _content,
@@ -193,18 +185,9 @@ contract Pool is Ownable {
         verifySignature(structHash, _signature);
     }
 
-    function test() external view {
-        console.log(WXDC.balanceOf(msg.sender));
-        console.log(WUSD.balanceOf(msg.sender));
-    }
-
     // ========================================
     //     ADMIN FUNCTIONS
     // ========================================
-
-    // function mint(address _address, uint256 _amount) external onlyOwner {
-    //     _mint(_address, _amount);
-    // }
 
     function setSigner(address _signer) external onlyOwner {
         SIGNER = _signer;

@@ -309,16 +309,58 @@ describe("Initialization of core functions", function () {
 
         await expect(WXDC.transferOwnership(Pool.address)).to.be.fulfilled;
         await expect(WUSD.transferOwnership(Pool.address)).to.be.fulfilled;
+      });
+      it("should be able to borrow USD under 70% collateralization", async function () {
+        await expect(
+          TestStablecoin.mint(Pool.address, 70)
+        ).to.be.fulfilled;
+        expect(await TestStablecoin.balanceOf(Pool.address)).to.be.equal("70");
 
+        await expect(Pool.depositCollateralXDC({value:430})).to.be.fulfilled;
+
+        expect(await WXDC.balanceOf(contractOwner.address)).to.be.equal("430");
+        expect(await waffle.provider.getBalance(Pool.address)).to.be.equal(
+          "430"
+        );
+        await Pool.borrow(70, 1, SignatureContent, signature);
+
+        expect(await waffle.provider.getBalance(Pool.address)).to.be.equal(
+          "430"
+        );
+        expect(await TestStablecoin.balanceOf(Pool.address)).to.be.equal("0");
+        expect(await TestStablecoin.balanceOf(contractOwner.address)).to.be.equal("70");
+      });
+      it("shouldn't be able to borrow USD over 70% collateralization", async function () {
+        await expect(
+          TestStablecoin.mint(Pool.address, 70)
+        ).to.be.fulfilled;
+        expect(await TestStablecoin.balanceOf(Pool.address)).to.be.equal("70");
+
+        await expect(Pool.depositCollateralXDC({value:420})).to.be.fulfilled;
+
+        expect(await WXDC.balanceOf(contractOwner.address)).to.be.equal("420");
+        expect(await waffle.provider.getBalance(Pool.address)).to.be.equal(
+          "420"
+        );
+        await expect(
+          Pool.borrow(70, 1, SignatureContent, signature)
+        ).to.be.revertedWith("NotEnoughCollateral()");
+
+        expect(await waffle.provider.getBalance(Pool.address)).to.be.equal(
+          "420"
+        );
+        expect(await TestStablecoin.balanceOf(Pool.address)).to.be.equal("70");
+        expect(await TestStablecoin.balanceOf(contractOwner.address)).to.be.equal("0");
+      });
+      it("should be able to borrow XDC under 70% collateralization", async function () {
         await expect(
           TestStablecoin.mint(contractOwner.address, 100)
         ).to.be.fulfilled;
-        await expect(Pool.connect(user).depositCollateralXDC({ value: 500 }));
+        await expect(Pool.connect(user).depositCollateralXDC({ value: 500 })).to.be.fulfilled;
         expect(await waffle.provider.getBalance(Pool.address)).to.be.equal(
           "500"
         );
-      });
-      it("should be able to borrow under 70% collateralization", async function () {
+        
         const amount = 290;
 
         await expect(TestStablecoin.approve(Pool.address, 100)).to.be.fulfilled;
@@ -334,7 +376,15 @@ describe("Initialization of core functions", function () {
           "210"
         );
       });
-      it("shouldn't be able to borrow over 70% collateralization", async function () {
+      it("shouldn't be able to borrow XDC over 70% collateralization", async function () {
+        await expect(
+          TestStablecoin.mint(contractOwner.address, 100)
+        ).to.be.fulfilled;
+        await expect(Pool.connect(user).depositCollateralXDC({ value: 500 })).to.be.fulfilled;
+        expect(await waffle.provider.getBalance(Pool.address)).to.be.equal(
+          "500"
+        );
+
         const amount = 300;
 
         await expect(TestStablecoin.approve(Pool.address, 100)).to.be.fulfilled;
